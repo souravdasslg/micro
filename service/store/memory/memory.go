@@ -151,48 +151,52 @@ func (m *memoryStore) list(prefix string, order store.Order, limit, offset uint,
 		allItems = append(allItems, k)
 	}
 
-	allKeys := make([]string, len(allItems))
-
-	// construct list of keys for this prefix
-	i := 0
-
-	// order descending if specified
+	// sort in ascending order
 	if order == store.OrderDesc {
-		j := 0
-		for i := len(allItems); i > 0; i-- {
-			allKeys[j] = allItems[i-1]
-			j++
-		}
+		sort.Slice(allItems, func(i, j int) bool { return allItems[i] > allItems[j] })
 	} else {
-		// default order ascending
-		for _, k := range allItems {
-			allKeys[i] = k
-			i++
-		}
+		sort.Slice(allItems, func(i, j int) bool { return allItems[i] < allItems[j] })
 	}
 
-	keys := make([]string, 0, len(allKeys))
-	sort.Slice(allKeys, func(i, j int) bool { return allKeys[i] < allKeys[j] })
+	var keys []string
 
-	for _, k := range allKeys {
+	// filter on prefix and suffix first
+	for i := 0; i < len(allItems); i++ {
+		k := allItems[i]
+
 		if prefixFilter != "" && !strings.HasPrefix(k, prefixFilter) {
 			continue
 		}
 		if suffixFilter != "" && !strings.HasSuffix(k, suffixFilter) {
 			continue
 		}
-		if offset > 0 {
-			offset--
-			continue
-		}
+
 		keys = append(keys, k)
-		// this check still works if no limit was passed to begin with, you'll just end up with large -ve value
-		if limit == 1 {
-			break
-		}
-		limit--
 	}
-	return keys
+
+	if offset > 0 {
+		// offset is greater than the keys we have
+		if int(offset) >= len(keys) {
+			return nil
+		}
+
+		// otherwise set the offset for the keys
+		keys = keys[offset:]
+	}
+
+	// check key limit
+	if v := int(limit); v == 0 || v > len(keys) {
+		limit = uint(len(keys))
+	}
+
+	// gen the final key list
+	var keyList []string
+
+	for i := 0; i < int(limit); i++ {
+		keyList = append(keyList, keys[i])
+	}
+
+	return keyList
 }
 
 func (m *memoryStore) Close() error {
